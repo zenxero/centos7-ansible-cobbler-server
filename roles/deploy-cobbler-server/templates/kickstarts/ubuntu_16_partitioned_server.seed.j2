@@ -1,0 +1,292 @@
+## Setup default partitions and sizes
+#set $disk = $getVar('$disk', '/dev/sda')
+#set $fs_size_boot = $getVar('$fs_size_boot', '4096')
+#set $fs_size_swap = $getVar('$fs_size_swap', '4096')
+#set $fs_size_root = $getVar('$fs_size_root', '32768')
+#set $fs_size_var = $getVar('$fs_size_var', '4096')
+#set $fs_size_tmp = $getVar('$fs_size_tmp', '4096')
+
+## Mostly based on the Ubuntu installation guide
+## https://help.ubuntu.com/12.04/installation-guide/
+
+## Only ask "critical" questions during automated install
+d-i debconf/priority string critical
+
+## Preseeding only locale sets language, country and locale.
+
+d-i debian-installer/locale string en_US.UTF-8
+
+## Keyboard selection.
+## Disable automatic (interactive) keymap detection.
+
+d-i console-setup/ask_detect boolean false
+d-i keyboard-configuration/layoutcode string us
+d-i keyboard-configuration/variantcode string
+
+## netcfg will choose an interface that has link if possible. This makes it
+## skip displaying a list if there is more than one interface.
+#set $myhostname = $getVar('hostname',$getVar('name','cobbler')).replace("_","-")
+
+d-i netcfg/choose_interface select auto
+d-i netcfg/get_hostname string $myhostname
+d-i netcfg/dhcp_timeout string 60
+
+## If non-free firmware is needed for the network or other hardware, you can
+## configure the installer to always try to load it, without prompting. Or
+## change to false to disable asking.
+# d-i hw-detect/load_firmware boolean true
+
+## NTP/Time Setup
+
+d-i time/zone string US/Central
+d-i clock-setup/utc boolean true
+d-i clock-setup/ntp boolean true
+d-i clock-setup/ntp-server string {{ ntp_server }}
+
+## Setup the installation source
+
+d-i mirror/country string manual
+d-i mirror/http/hostname string http://{{ ansible_fqdn }}
+d-i mirror/http/directory string $install_source_directory
+d-i mirror/http/proxy string
+
+#set $os_v = $getVar('os_version','')
+#if $os_v and $os_v.lower()[0] > 'p'
+# Required at least for 12.10+
+d-i live-installer/net-image string http://{{ ansible_fqdn }}/cobbler/links/$distro_name/install/filesystem.squashfs
+#end if
+
+## Suite to install.
+
+# d-i mirror/suite string xenial
+# d-i mirror/udeb/suite string xenial
+
+## Components to use for loading installer components (optional).
+
+#d-i mirror/udeb/components multiselect main, restricted
+
+## Disk Partitioning
+## Use LVM, and wipe out anything that already exists
+
+d-i partman-auto/disk string $disk
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+d-i partman-auto/method string lvm
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-md/device_remove_md boolean true
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman-basicfilesystems/choose_label string gpt
+d-i partman-basicfilesystems/default_label string gpt
+d-i partman-partitioning/choose_label string gpt
+d-i partman-partitioning/default_label string gpt
+d-i partman/choose_label string gpt
+d-i partman/default_label string gpt
+
+## For LVM partitioning, you can select how much of the volume group to use
+## for logical volumes.
+
+d-i partman-auto-lvm/guided_size string max
+# d-i partman-auto-lvm/guided_size string 10GB
+# d-i partman-auto-lvm/guided_size string 50%
+
+## You can choose one of the three predefined partitioning recipes:
+## - atomic: all files in one partition
+## - home:   separate /home partition
+## - multi:  separate /home, /usr, /var, and /tmp partitions
+
+# d-i partman-auto/choose_recipe select multi
+
+## If you just want to change the default filesystem from ext3 to something
+## else, you can do that without providing a full recipe.
+
+# d-i partman/default_filesystem string xfs
+
+## Custom Partitioning
+##
+## Physical partitions:
+## 1. BIOS boot partition: 1 MB - See https://wiki.archlinux.org/index.php/GRUB2#GUID_Partition_Table_.28GPT.29_specific_instructions
+## 2. Boot partition: 4 GB XFS
+## 3. LVM with the following logical volumes:
+##     - Root partition: 32 GB XFS
+##     - /var/ partition: 4 GB XFS
+##     - /tmp/ partition: 4 GB XFS
+##     - Swap partition: 4 GB
+##     - /srv/ partition: remaining space XFS
+
+## The numbers mean:
+## 2560                   10            2560
+## ^ minimum size in MB   ^ priority    ^ maximum size in MB
+
+## I just set the min and max to be the same. This way, the size is actually
+## what you set it to. If you make the max "-1", that means that the partition
+## can grow to fill the rest of the free space on the disk. Always make partitions
+## that are going to grow to fit the disk be last.
+
+d-i partman-auto/expert_recipe string                           \
+        ubuntu ::                                               \
+                1 1 1 free                                      \
+                        $gptonly{ }                             \
+                        $primary{ }                             \
+                        $bios_boot{ }                           \
+                        method{ biosgrub }                      \
+                .                                               \
+                $fs_size_boot 100 $fs_size_boot xfs             \
+                        $gptonly{ }                             \
+                        $primary{ }                             \
+                        method{ format } format{ }              \
+                        use_filesystem{ } filesystem{ xfs }     \
+                        mountpoint{ /boot }                     \
+                .                                               \
+                $fs_size_root 200 $fs_size_root xfs             \
+                        $lvmok{ }                               \
+                        method{ format } format{ }              \
+                        use_filesystem{ } filesystem{ xfs }     \
+                        mountpoint{ / }                         \
+                        lv_name{ root }                         \
+                .                                               \
+                $fs_size_var 300 $fs_size_var xfs               \
+                        $lvmok{ }                               \
+                        method{ format } format{ }              \
+                        use_filesystem{ } filesystem{ xfs }     \
+                        mountpoint{ /var }                      \
+                        lv_name{ var }                          \
+                .                                               \
+                $fs_size_tmp 400 $fs_size_tmp xfs               \
+                        $lvmok{ }                               \
+                        method{ format } format{ }              \
+                        use_filesystem{ } filesystem{ xfs }     \
+                        mountpoint{ /tmp }                      \
+                        lv_name{ tmp }                          \
+                .                                               \
+                $fs_size_swap 500 $fs_size_swap linux-swap      \
+                        $lvmok{ }                               \
+                        method{ swap } format{ }                \
+                        lv_name{ swap }                         \
+                .                                               \
+                1024 600 -1 xfs                                 \
+                        $lvmok{ }                               \
+                        method{ format } format{ }              \
+                        use_filesystem{ } filesystem{ xfs }     \
+                        mountpoint{ /srv }                      \
+                        lv_name{ srv }                          \
+                .
+
+## root account and password
+
+d-i passwd/root-login boolean true
+d-i passwd/root-password-crypted password $default_password_crypted
+
+## skip creation of a normal user account.
+
+d-i passwd/make-user boolean false
+
+## You can choose to install restricted and universe software, or to install
+## software from the backports repository.
+
+# d-i apt-setup/restricted boolean true
+# d-i apt-setup/universe boolean true
+# d-i apt-setup/backports boolean true
+
+## Uncomment this if you don't want to use a network mirror.
+
+# d-i apt-setup/use_mirror boolean false
+
+## Select which update services to use; define the mirrors to be used.
+## Values shown below are the normal defaults.
+
+d-i apt-setup/services-select multiselect security
+d-i apt-setup/security_host string archive.ubuntu.com
+d-i apt-setup/security_path string /ubuntu
+
+$SNIPPET('preseed_apt_repo_config')
+
+## Enable deb-src lines
+
+# d-i apt-setup/local0/source boolean true
+
+## URL to the public key of the local repository; you must provide a key or
+## apt will complain about the unauthenticated repository and so the
+## sources.list line will be left commented out
+
+# d-i apt-setup/local0/key string http://local.server/key
+
+## By default the installer requires that repositories be authenticated
+## using a known gpg key. This setting can be used to disable that
+## authentication. Warning: Insecure, not recommended.
+
+d-i debian-installer/allow_unauthenticated boolean true
+
+## tasksel installs
+
+tasksel tasksel/first multiselect server, samba-server
+
+## Individual additional packages to install
+## wget is REQUIRED otherwise quite a few things won't work
+## later in the build (like late-command scripts)
+
+d-i pkgsel/include string ntp ssh wget man g++ build-essential python2.7
+
+## Some version of the installer can report back on what software you have
+## installed, and what software you use. The default is not to report back,
+## but sending reports helps the project determine what software is most
+## popular and include it on CDs.
+
+popularity-contest popularity-contest/participate boolean false
+
+## Grub settings
+## Force the grub installer to install onto "$disk"
+
+d-i grub-installer/bootdev string $disk
+
+## This is fairly safe to set, it makes grub install automatically to the MBR
+## id no other operating system is detected on the machine.
+
+d-i grub-installer/only_debian boolean false
+
+## This one makes grub-installer install to the MBR if it also finds some other
+## OS, which is less safe as it might be able to boot that other OS.
+#d-i grub-installer/with_other_os boolean true
+
+## Use the following option to add additional boot parameters for the
+## installed system (if supported by the bootloader installer).
+## Note: options passed to the installer will be added automatically.
+
+d-i debian-installer/add-kernel-opts string $kernel_options_post
+
+## Avoid that last message about the install being complete.
+
+d-i finish-install/reboot_in_progress note
+
+## Figure out if we're kickstarting a system or a profile
+#if $getVar('system_name','') != ''
+#set $what = "system"
+#else
+#set $what = "profile"
+#end if
+
+## This first command is run as early as possible, just after preseeding is read.
+## d-i preseed/early_command string [command]
+
+d-i preseed/early_command string wget -O- \
+   http://$http_server/cblr/svc/op/script/$what/$name/?script=preseed_early_default | \
+   /bin/sh -s
+
+## This command is run immediately before the partitioner starts. It may be
+## useful to apply dynamic partitioner preseeding that depends on the state
+## of the disks (which may not be visible when preseed/early_command runs).
+
+# d-i partman/early_command \
+#       string debconf-set partman-auto/disk "\$(list-devices disk | head -n1)"
+
+## This command is run just before the install finishes, but when there is
+## still a usable /target directory. You can chroot to /target and use it
+## directly, or use the apt-install and in-target commands to easily install
+## packages and run commands in the target system.
+## d-i preseed/late_command string [command]
+
+d-i preseed/late_command string wget -O- \
+   http://$http_server/cblr/svc/op/script/$what/$name/?script=preseed_late_default | \
+   chroot /target /bin/sh -s

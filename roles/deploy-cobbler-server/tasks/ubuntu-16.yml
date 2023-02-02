@@ -1,0 +1,120 @@
+---
+
+#
+# ubuntu-16
+#
+# This task imports a Ubuntu 16.04 distro into cobbler and
+# sets up package repositories and profiles.
+#
+
+#############################
+# Setup preseeds/snippets
+#############################
+
+- name: Copy ubuntu 16 atomic server preseed
+  template:
+    src: templates/kickstarts/ubuntu_16_atomic_server.seed.j2
+    dest: /var/lib/cobbler/kickstarts/ubuntu_16_atomic_server.seed
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy ubuntu 16 partitioned server preseed
+  template:
+    src: templates/kickstarts/ubuntu_16_partitioned_server.seed.j2
+    dest: /var/lib/cobbler/kickstarts/ubuntu_16_partitioned_server.seed
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy ubuntu 16 preseed late default script
+  copy:
+    src: files/scripts/preseed_late_default
+    dest: /var/lib/cobbler/scripts/preseed_late_default
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy ubuntu 16 post install boostrap snippet
+  template:
+    src: templates/snippets/ubuntu_post_install_bootstrap.j2
+    dest: /var/lib/cobbler/snippets/ubuntu_post_install_bootstrap
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy ubuntu 16 late apt repo config snippet
+  template:
+    src: templates/snippets/late_apt_repo_config.j2
+    dest: /var/lib/cobbler/snippets/late_apt_repo_config
+    owner: root
+    group: root
+    mode: 0644
+
+#############################
+# Distro import
+#############################
+
+- name: Download ubuntu 16.04 server iso
+  get_url:
+    url: '{{ ubuntu_16_iso }}'
+    dest: /var/lib/cobbler/isos/ubuntu-16.04-server-amd64.iso
+    mode: 0644
+
+- name: Mount the ubuntu 16.04 iso for import
+  mount:
+    name: /mnt
+    src: /var/lib/cobbler/isos/ubuntu-16.04-server-amd64.iso
+    fstype: iso9660
+    opts: ro,loop
+    state: mounted
+  ignore_errors: yes
+
+- name: Import ubuntu 16.04 into cobbler
+  command: /usr/bin/cobbler import --path=/mnt --name=Ubuntu-16.04 --arch=x86_64
+  ignore_errors: yes
+
+- name: Unmount the ubuntu 16.04 iso
+  mount:
+    name: /mnt
+    src: /var/lib/cobbler/isos/ubuntu-16.04-server-amd64.iso
+    fstype: iso9660
+    opts: ro,loop
+    state: unmounted
+  ignore_errors: yes
+
+#############################
+# Repo setup
+#############################
+
+- name: Remove default Ubuntu repo
+  command: /usr/bin/cobbler repo remove --name=Ubuntu-16.04-x86_64
+  ignore_errors: yes
+
+- name: Remove default Ubuntu hwe repo
+  command: /usr/bin/cobbler repo remove --name=Ubuntu-16.04-hwe-x86_64
+  ignore_errors: yes
+
+- name: Add Ubuntu 16 base repos
+  command: /usr/bin/cobbler repo add --name=ubuntu-16.04 --mirror=http://archive.ubuntu.com/ubuntu/ --arch=x86_64 --breed=apt --priority=500 --yumopts="--verbose --ignore-release-gpg" --apt-dists="xenial xenial-updates xenial-security xenial-backports" --apt-components="main universe restricted multiverse" --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+#############################
+# Profile setup
+#############################
+
+- name: Remove default ubuntu 16.04 profile
+  command: /usr/bin/cobbler profile remove --name=Ubuntu-16.04-x86_64
+  ignore_errors: yes
+
+- name: Remove default ubuntu 16.04 hwe profile
+  command: /usr/bin/cobbler profile remove --name=Ubuntu-16.04-hwe-x86_64
+  ignore_errors: yes
+
+- name: Add ubuntu 16.04 atomic server profile
+  command: /usr/bin/cobbler profile add --name=ubuntu-16-atomic-server --distro=Ubuntu-16.04-x86_64 --enable-menu=0 --kopts="netcfg/choose_interface=auto" --kopts-post="consoleblank=0 biosdevname=0 net.ifnames=0" --repos="ubuntu-16.04" --kickstart="/var/lib/cobbler/kickstarts/ubuntu_16_atomic_server.seed"
+  ignore_errors: yes
+
+- name: Add ubuntu 16.04 partitioned server profile
+  command: /usr/bin/cobbler profile add --name=ubuntu-16-partitioned-server --distro=Ubuntu-16.04-x86_64 --enable-menu=0 --kopts="netcfg/choose_interface=auto" --kopts-post="consoleblank=0 biosdevname=0 net.ifnames=0" --repos="ubuntu-16.04" --kickstart="/var/lib/cobbler/kickstarts/ubuntu_16_partitioned_server.seed"
+  ignore_errors: yes

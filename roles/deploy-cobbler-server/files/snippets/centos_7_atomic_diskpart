@@ -1,0 +1,47 @@
+#set $hostname = $getVar('$system_name', None)
+#set $hostpart = $hostname.split('.')[0]
+#set $disk = $getVar('$disk', 'sda')
+#set $disks = $getVar('$disks', 'sda')
+#set $count = len($disks.split(','))
+
+#if $hostname == None
+#set $vgname = "sys"
+#else
+#set $vgname = $hostpart.replace('-','_') + '_sys'
+#end if
+
+## Setup default paritions and sizes
+## Creates:
+##   4 GB /boot
+##   4 GB SWAP
+##   Fills remaining disk space into /
+#set $fs_size_boot = $getVar('$fs_size_boot', '4096')
+#set $fs_size_swap = $getVar('$fs_size_swap', '4096')
+
+#if $count >= 2
+zerombr
+clearpart --all --drives=$disks --initlabel
+
+#set $diska = $disks.split(',')[0]
+#set $diskb = $disks.split(',')[1]
+
+part raid.00 --size=$fs_size_boot --ondisk=$diska --asprimary
+part raid.10 --size=$fs_size_boot --ondisk=$diskb --asprimary
+
+part raid.01 --size=40000 --grow --ondisk=$diska --asprimary
+part raid.11 --size=40000 --grow --ondisk=$diskb --asprimary
+
+raid /boot --fstype xfs --level=1 --device=md0 raid.00 raid.10
+raid pv.00 --level=1 --device=md1 raid.01 raid.11
+
+#else
+zerombr
+clearpart --all --drives=$disk --initlabel
+part /boot --fstype xfs --size=$fs_size_boot --ondisk=$disk --asprimary
+part pv.00 --size=100 --grow --ondisk=$disk --asprimary
+#end if
+
+part biosboot --fstype=biosboot --size=1
+volgroup $vgname pv.00
+logvol swap --fstype swap --name=swap --vgname=$vgname --size=$fs_size_swap
+logvol / --fstype xfs --name=root --vgname=$vgname --size=1 --grow

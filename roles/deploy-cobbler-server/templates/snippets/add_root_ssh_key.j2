@@ -1,0 +1,7 @@
+# Begin root SSH key setup
+mkdir -p /root/.ssh
+cat > /root/.ssh/authorized_keys <<EOF
+{{ root_ssh_public_key }}
+EOF
+chmod 600 /root/.ssh/authorized_keys
+# End root SSH key setup

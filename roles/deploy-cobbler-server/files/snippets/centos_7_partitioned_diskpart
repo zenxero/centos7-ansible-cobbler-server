@@ -1,0 +1,57 @@
+#set $hostname = $getVar('$system_name', None)
+#set $hostpart = $hostname.split('.')[0]
+#set $disk = $getVar('$disk', 'sda')
+#set $disks = $getVar('$disks', 'sda')
+#set $count = len($disks.split(','))
+
+#if $hostname == None
+#set $vgname = "sys"
+#else
+#set $vgname = $hostpart.replace('-','_') + '_sys'
+#end if
+
+## Setup default paritions and sizes
+## Creates:
+##   4 GB /boot
+##   32 GB /
+##   4 GB /var
+##   4 GB /tmp
+##   4 GB SWAP
+##   Fills remaining disk space into /srv
+#set $fs_size_boot = $getVar('$fs_size_boot', '4096')
+#set $fs_size_root = $getVar('$fs_size_root', '32768')
+#set $fs_size_var = $getVar('$fs_size_var', '4096')
+#set $fs_size_tmp = $getVar('$fs_size_tmp', '4096')
+#set $fs_size_swap = $getVar('$fs_size_swap', '4096')
+#set $fs_size_reserve = $getVar('$fs_size_reserve', '16384')
+
+#if $count >= 2
+zerombr
+clearpart --all --drives=$disks --initlabel
+
+#set $diska = $disks.split(',')[0]
+#set $diskb = $disks.split(',')[1]
+
+part raid.00 --size=$fs_size_boot --ondisk=$diska --asprimary
+part raid.10 --size=$fs_size_boot --ondisk=$diskb --asprimary
+
+part raid.01 --size=40000 --grow --ondisk=$diska --asprimary
+part raid.11 --size=40000 --grow --ondisk=$diskb --asprimary
+
+raid /boot --fstype xfs --level=1 --device=md0 raid.00 raid.10
+raid pv.00 --level=1 --device=md1 raid.01 raid.11
+
+#else
+zerombr
+clearpart --all --drives=$disk --initlabel
+part /boot --fstype xfs --size=$fs_size_boot --ondisk=$disk --asprimary
+part pv.00 --size=100 --grow --ondisk=$disk --asprimary
+#end if
+
+part biosboot --fstype=biosboot --size=1
+volgroup $vgname pv.00
+logvol / --fstype xfs --name=root --vgname=$vgname --size=$fs_size_root
+logvol /var --fstype xfs --name=var --vgname=$vgname --size=$fs_size_var
+logvol /tmp --fstype xfs --name=tmp --vgname=$vgname --size=$fs_size_tmp
+logvol swap --fstype swap --name=swap --vgname=$vgname --size=$fs_size_swap
+logvol /srv --fstype xfs --name=srv --vgname=$vgname --size=1 --grow

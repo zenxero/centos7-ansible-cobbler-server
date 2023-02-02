@@ -1,0 +1,37 @@
+---
+
+#
+# cobbler service handlers
+#
+# Restart only when changes are made.
+#
+
+- name: restart cobblerd
+  service:
+    name: cobblerd
+    state: restarted
+    enabled: yes
+
+- name: restart firewalld
+  service:
+    name: firewalld
+    state: restarted
+    enabled: yes
+
+- name: restart httpd
+  service:
+    name: httpd
+    state: restarted
+    enabled: yes
+
+- name: restart rsyncd
+  service:
+    name: rsyncd
+    state: restarted
+    enabled: yes
+
+- name: restart xinetd
+  service:
+    name: xinetd
+    state: restarted
+    enabled: yes

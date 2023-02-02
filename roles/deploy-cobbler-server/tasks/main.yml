@@ -1,0 +1,211 @@
+---
+
+#
+# deploy-cobbler-server
+#
+# This task configures a CentOS 7 system to be a cobbler PXE boot server.
+#
+
+# Make sure the distro is running CentOS 7
+- name: Check distro for CentOS 7 compatibility
+  fail:
+    msg="You're not running a supported distro for the Cobbler server (CentOS 7)"
+  when: (ansible_distribution != "CentOS" and ansible_distribution_major_version != "7")
+
+# All tasks are grouped in a block/when statement so that this only runs against a CentOS 7 system.
+- block:
+
+#############################
+# Security
+#############################
+
+  # Set selinux to permissive
+  - selinux:
+      policy: targeted
+      state: permissive
+
+  - name: Ensure firewalld is disabled and stopped
+    service:
+      name: firewalld
+      state: stopped
+      enabled: no
+    when: not use_firewalld
+
+  - name: Enable firewalld and allow cobbler services through
+    firewalld: 
+      service: "{{ item }}"
+      permanent: true
+      state: enabled
+    with_items:
+      - http
+      - https
+      - tftp
+    notify: restart firewalld
+    when: use_firewalld
+
+#############################
+# Package installs
+#############################
+
+  - name: Install epel
+    yum:
+      name: epel-release
+      state: present
+
+  - name: Install cobbler packages
+    yum:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - python2-django16
+      - PyYAML
+      - checkpolicy
+      - cobbler
+      - cobbler-web
+      - createrepo
+      - debmirror
+      - fence-agents-all
+      - git
+      - mod_ssl
+      - mod_wsgi
+      - ntp
+      - policycoreutils-python
+      - pykickstart
+      - pykickstart
+      - python-cheetah
+      - python-ldap
+      - python-netaddr
+      - python-simplejson
+      - python-urlgrabber
+      - rsync
+      - selinux-policy-devel
+      - syslinux
+      - tftp-server
+      - tree
+      - xinetd
+      - yum-plugin-priorities
+      - yum-utils
+
+#############################
+# Cobbler configs setup
+#############################
+
+  - name: Ensure /var/lib/cobbler/isos directory exists
+    file:
+      path: /var/lib/cobbler/isos
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Copy cobbler settings template onto server
+    template:
+      src: templates/cobbler/settings.j2
+      dest: /etc/cobbler/settings
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy ldap auth module template onto server
+    template:
+      src: templates/cobbler/modules.conf.j2
+      dest: /etc/cobbler/modules.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy cobbler users template onto server
+    template:
+      src: templates/cobbler/users.conf.j2
+      dest: /etc/cobbler/users.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy openldap config onto server
+    copy:
+      src: files/openldap/ldap.conf
+      dest: /etc/openldap/ldap.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy xinetd file for tftp onto server
+    copy:
+      src: files/xinetd.d/tftp
+      dest: /etc/xinetd.d/tftp
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy debmirror config file onto server
+    copy:
+      src: files/cobbler/debmirror.conf
+      dest: /etc/debmirror.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy cobbler reposync cronjob onto server
+    copy:
+      src: files/cron.d/cobbler-reposync
+      dest: /etc/cron.d/cobbler-reposync
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy root ssh key snippet
+    template:
+      src: templates/snippets/add_root_ssh_key.j2
+      dest: /var/lib/cobbler/snippets/add_root_ssh_key
+      owner: root
+      group: root
+      mode: 0644
+
+#############################
+# Initial service startup
+#############################
+
+  - name: Ensure services are started and enabled
+    service:
+      name: "{{ item }}"
+      state: started
+      enabled: yes
+    with_items:
+      - cobblerd
+      - httpd
+      - rsyncd
+      - xinetd
+
+  - name: Run cobbler get-loaders command
+    command: /usr/bin/cobbler get-loaders
+
+  - name: Run cobbler signature update
+    command: /usr/bin/cobbler signature update
+
+  - name: Run cobbler sync command
+    command: /usr/bin/cobbler sync
+    notify:
+      - restart cobblerd
+      - restart httpd
+
+#################################
+# Include distro import playbooks
+#################################
+
+  - include_tasks: centos-7.yml
+  - include_tasks: ubuntu-16.yml
+
+#############################
+# Cobbler initial reposync
+#############################
+
+  - name: Run cobbler sync command
+    command: /usr/bin/cobbler sync
+
+  - name: Run cobbler reposync command
+    command: /usr/bin/cobbler reposync
+    notify:
+      - restart cobblerd
+
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")

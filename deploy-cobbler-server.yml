@@ -1,0 +1,56 @@
+---
+
+#
+# deploy-cobbler-server.yml
+#
+# This playbook configure the target system to be a cobbler PXE boot server.
+#
+
+- hosts: cobbler-server
+  remote_user: root
+  roles:
+    - deploy-cobbler-server
+  vars:
+    # CentOS 7 ISO URL (MUST BE THE MINIMAL INSTALL ISO)
+    centos_7_minimal_iso: http://mirror.math.princeton.edu/pub/centos/7/isos/x86_64/CentOS-7-x86_64-Minimal-1810.iso
+
+    # Ubuntu 16.04 server ISO URL (MUST BE THE SERVER ISO)
+    ubuntu_16_iso: http://releases.ubuntu.com/16.04/ubuntu-16.04.5-server-amd64.iso
+
+    # The default password for root on PXE installs is "password". Change it here:
+    default_password_crypted:
+
+    # Paste your root SSH public key here to add it to PXE builds
+    root_ssh_public_key:
+
+    # NTP server
+    ntp_server: time.google.com
+
+    # Firewall settings
+    # Set "use_firewalld" to "true" to enable the firewall and let
+    # cobbler services through.
+    use_firewalld: false
+
+    # Build report email settings (Optional)
+    # Set "build_report_emails" to "true" and configure the mail settings
+    # to enable sending emails for cobbler system builds.
+    build_report_emails: false
+    build_reporting_enabled: 0
+    build_reporting_sender: email@example.com
+    build_reporting_email: root@localhost
+    build_reporting_smtp_server: smtp.example.com
+    build_reporting_subject: Cobbler installation completed
+
+    # LDAP auth settings for web interface login (Optional)
+    # The default username and password for the cobbler web interface is cobbler/cobbler.
+    # Set "ldap_auth" to "true" and configure the ldap settings
+    # to enable ldap auth for the cobbler web interface.
+    ldap_auth: false
+    ldap_anonymous_bind:
+    ldap_server:
+    ldap_base_dn:
+    ldap_port:
+    ldap_tls:
+    ldap_search_bind_dn:
+    ldap_search_passwd:
+    ldap_search_prefix:

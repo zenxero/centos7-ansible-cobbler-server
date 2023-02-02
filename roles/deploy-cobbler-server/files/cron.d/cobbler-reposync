@@ -1,0 +1,1 @@
+0 1 * * * root /usr/bin/cobbler reposync --tries=3 --no-fail && /usr/bin/cobbler sync

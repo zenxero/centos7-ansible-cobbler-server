@@ -1,0 +1,5 @@
+# Set time correctly
+/usr/sbin/ntpdate {{ ntp_server }}
+/sbin/hwclock --systohc --utc
+
+# Put your post-install bootstrap bash scripts or config-management enrollment here.

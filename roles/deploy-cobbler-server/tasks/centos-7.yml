@@ -1,0 +1,124 @@
+---
+
+#
+# centos-7
+#
+# This task imports a CentOS 7 distro into cobbler and
+# sets up package repositories and profiles.
+#
+
+#############################
+# Setup kickstarts/snippets
+#############################
+
+- name: Copy centos 7 atomic server kickstart
+  copy:
+    src: files/kickstarts/centos_7_atomic_server.ks
+    dest: /var/lib/cobbler/kickstarts/centos_7_atomic_server.ks
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy centos 7 atomic server snippet
+  copy:
+    src: files/snippets/centos_7_atomic_diskpart
+    dest: /var/lib/cobbler/snippets/centos_7_atomic_diskpart
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy centos 7 partitioned server kickstart
+  copy:
+    src: files/kickstarts/centos_7_partitioned_server.ks
+    dest: /var/lib/cobbler/kickstarts/centos_7_partitioned_server.ks
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy centos 7 partitioned server snippet
+  copy:
+    src: files/snippets/centos_7_partitioned_diskpart
+    dest: /var/lib/cobbler/snippets/centos_7_partitioned_diskpart
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy centos 7 post install boostrap snippet
+  template:
+    src: templates/snippets/centos_post_install_bootstrap.j2
+    dest: /var/lib/cobbler/snippets/centos_post_install_bootstrap
+    owner: root
+    group: root
+    mode: 0644
+
+#############################
+# Distro import
+#############################
+
+- name: Download centos 7 minimal iso
+  get_url:
+    url: '{{ centos_7_minimal_iso }}'
+    dest: /var/lib/cobbler/isos/CentOS-7-x86_64-Minimal-1810.iso
+    mode: 0644
+
+- name: Mount the centos 7 iso for import
+  mount:
+    name: /mnt
+    src: /var/lib/cobbler/isos/CentOS-7-x86_64-Minimal-1810.iso
+    fstype: iso9660
+    opts: ro,loop
+    state: mounted
+  ignore_errors: yes
+
+- name: Import centos 7 into cobbler
+  command: /usr/bin/cobbler import --path=/mnt --name=CentOS-7.6-1810 --arch=x86_64
+  ignore_errors: yes
+
+- name: Unmount the centos 7 iso
+  mount:
+    name: /mnt
+    src: /var/lib/cobbler/isos/CentOS-7-x86_64-Minimal-1810.iso
+    fstype: iso9660
+    opts: ro,loop
+    state: unmounted
+  ignore_errors: yes
+
+#############################
+# Repo setup
+#############################
+
+- name: Add centos 7 base repo
+  command: /usr/bin/cobbler repo add --name=centos-7-base --mirror=http://mirror.centos.org/centos-7/7/os/x86_64/ --arch=x86_64 --breed=yum --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+- name: Add centos 7 updates repo
+  command: /usr/bin/cobbler repo add --name=centos-7-updates --mirror=http://mirror.centos.org/centos-7/7/updates/x86_64/ --arch=x86_64 --breed=yum --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+- name: Add centos 7 fasttrack repo
+  command: /usr/bin/cobbler repo add --name=centos-7-fasttrack --mirror=http://mirror.centos.org/centos-7/7/fasttrack/x86_64/ --arch=x86_64 --breed=yum --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+- name: Add centos 7 extras repo
+  command: /usr/bin/cobbler repo add --name=centos-7-extras --mirror=http://mirror.centos.org/centos-7/7/extras/x86_64/ --arch=x86_64 --breed=yum --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+- name: Add centos 7 epel repo
+  command: /usr/bin/cobbler repo add --name=centos-7-epel --mirror=http://download.fedoraproject.org/pub/epel/7/x86_64 --arch=x86_64 --breed=yum --keep-updated=N --mirror-locally=N
+  ignore_errors: True
+
+#############################
+# Profile setup
+#############################
+
+- name: Remove default centos 7 profile
+  command: /usr/bin/cobbler profile remove --name=CentOS-7.6-1810-x86_64
+  ignore_errors: yes
+
+- name: Add centos 7 atomic server profile
+  command: /usr/bin/cobbler profile add --name=centos-7-atomic-server --distro=CentOS-7.6-1810-x86_64 --enable-menu=0 --kopts="inst.sshd text" --kopts-post="consoleblank=0" --repos="centos-7-base centos-7-updates centos-7-epel centos-7-fasttrack centos-7-extras" --kickstart="/var/lib/cobbler/kickstarts/centos_7_atomic_server.ks"
+  ignore_errors: yes
+
+- name: Add centos 7 partitioned server profile
+  command: /usr/bin/cobbler profile add --name=centos-7-partitioned-server --distro=CentOS-7.6-1810-x86_64 --enable-menu=0 --kopts="inst.sshd text" --kopts-post="consoleblank=0" --repos="centos-7-base centos-7-updates centos-7-epel centos-7-fasttrack centos-7-extras" --kickstart="/var/lib/cobbler/kickstarts/centos_7_partitioned_server.ks"
+  ignore_errors: yes
